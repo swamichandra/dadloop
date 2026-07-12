@@ -1,0 +1,12 @@
+# Author: Swami Chandrasekaran
+# Last Modified: 2026-07-12
+# Purpose: Pinned dependency versions for reproducible installs.
+#
+# Pinned for reproducible installs. pyproject.toml carries the same floors as
+# ranges (>=) for library consumers; this file pins exact versions for anyone
+# who wants the environment we actually tested against.
+#
+#   pip install -r requirements.txt     reproduce our environment
+#   pip install -e .                    install as a library, resolve freely
+anthropic==0.116.0
+textual==8.2.8

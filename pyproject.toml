@@ -1,0 +1,29 @@
+# Author: Swami Chandrasekaran
+# Last Modified: 2026-07-12
+# Purpose: Project packaging, dependencies, and console script entry point.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dadloop"
+version = "1.1.1"
+description = "A model-in-the-loop dad agent harness with skills, memory, and a Textual TUI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["agent", "harness", "tool-use", "llm", "anthropic", "tui", "textual", "dad"]
+dependencies = [
+    "anthropic>=0.116.0",
+    "textual>=8.2.0",   # 8.2 for the Theme API used in dadloop/theme.py
+]
+
+[project.optional-dependencies]
+dev = ["pyflakes>=3.0"]
+
+[project.scripts]
+dadloop = "dadloop.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dadloop"]
