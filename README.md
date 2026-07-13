@@ -13,7 +13,7 @@ Most agent harnesses today are demonstrated through coding. That makes sense bec
 I wanted to show what an agent harness would look like for that kind of domain work. dadloop is an agent harness for that kind of work. Its domain happens to be a suburban dad, because everyone already knows the rules, controlled by mom. dadloop is also my homage to [pi.dev](https://pi.dev) — small core, tools as the model's hands, memory you own, no framework in the way.
 
 <p align="center">
-<img src="docs/dadloop.png" alt="dadloop - parts of the agent harness" width="40%">
+<img src="docs/dadloop.png" alt="dadloop - parts of the agent harness" width="60%">
 </p>
 
 ## What it looks like
@@ -68,7 +68,7 @@ The fifteen skills: `answering-big-questions` `bedtime` `breaking-up-fights` `co
 Skills only put their one-line descriptions in the prompt; bodies load on demand, so fifteen cost about a quarter of pasting them all in. Blocked calls are still written to memory — the job outlives the session, so the harness carries the refusals across restarts, or long-horizon work is impossible.
 
 <p align="center">
-<img src="docs/dadloop-skills.png" alt="dadloop agent skills" width="40%">
+<img src="docs/dadloop-skills.png" alt="dadloop agent skills" width="60%">
 </p>
 
 Full detail in [docs/architecture.md](docs/architecture.md).
