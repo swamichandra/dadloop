@@ -12,7 +12,9 @@ Most agent harnesses today are demonstrated through coding. That makes sense bec
 
 I wanted to show what an agent harness would look like for that kind of domain work. dadloop is an agent harness for that kind of work. Its domain happens to be a suburban dad, because everyone already knows the rules, controlled by mom. dadloop is also my homage to [pi.dev](https://pi.dev) — small core, tools as the model's hands, memory you own, no framework in the way.
 
-![dadloop](docs/dadloop.png)
+<p align="center">
+<img src="docs/dadloop.png" alt="dadloop - parts of the agent harness" width="40%">
+</p>
 
 ## What it looks like
 
@@ -65,6 +67,10 @@ The fifteen skills: `answering-big-questions` `bedtime` `breaking-up-fights` `co
 
 Skills only put their one-line descriptions in the prompt; bodies load on demand, so fifteen cost about a quarter of pasting them all in. Blocked calls are still written to memory — the job outlives the session, so the harness carries the refusals across restarts, or long-horizon work is impossible.
 
+<p align="center">
+<img src="docs/dadloop-skills.png" alt="dadloop agent skills" width="40%">
+</p>
+
 Full detail in [docs/architecture.md](docs/architecture.md).
 
 ## Dad, and the constitution Mom holds him to
@@ -87,13 +93,23 @@ Governance is not a disclaimer in the system prompt. It is a layer above the mod
 
 ## The work surface
 
-The TUI is where the harness shows its work. Any part of a turn is auditable without leaving it.
+The TUI is where the harness shows its work. It is the work surface. Any part of a turn is auditable without leaving it.
+
+<p align="center">
+<img src="docs/tui-main.png" alt="Work surface for the dadloop agent harness" width="40%">
+</p>
+
 
 - **Canvas** — every tool call is a collapsible step: the arguments passed, the result returned. Skills appear as he pulls them, so a four-skill reconciliation reads as four visible moves. `Tab` walks them, `Enter` opens one, `f2`/`f3` open and close them all.
 - **Plan panel** — Dad's stated plan, checking off as calls resolve. A call that was *not* in the plan is appended and marked unplanned, so intent and behavior stay side by side.
 - **Review cards** — Mom's blocks and rewrites land on the canvas as bordered cards: the call, the verdict, the reason. Not a log line.
 - **Scoreboard** — session totals (turns, tools, tokens, cost, latency) and what has accumulated across every session.
 - **Admin view** (`f4`) — the harness inspecting itself: tools and schemas, skills and which are loaded, the constitution, Mom's live policies, the memory files on disk, the telemetry.
+
+<p align="center">
+<img src="docs/tui-admin-panel.png" alt="Work surface admin panel" width="40%">
+</p>
+
 
 ## Other things it has to survive
 
