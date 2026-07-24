@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-17
 Purpose: Tests session totals and cross-session stats accumulation.
 
 Proves the two data sources behind the stats panel: session totals
@@ -17,6 +17,12 @@ def test_session_totals_accumulate_across_turns():
     class FM:
         def __init__(self): self.n = 0
         def create(self, **kw):
+            # check_weather now runs a nested web_search model call. It's a
+            # separate concern from the outer loop being measured here, so the
+            # fake answers those inline without consuming a scripted turn.
+            if any(t.get("type", "").startswith("web_search") for t in (kw.get("tools") or [])):
+                return NS(content=[NS(type="text", text="Clear, 58°F.")],
+                          usage=NS(input_tokens=0, output_tokens=0))
             self.n += 1
             if self.n == 1:
                 return NS(content=[NS(type="tool_use", id="a", name="check_weather", input={})],

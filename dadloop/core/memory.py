@@ -1,6 +1,6 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
-Purpose: File-based semantic memory for grievances, lessons, people, and rulings.
+Last Modified: 2026-07-18
+Purpose: File-based semantic memory for grievances, lessons, people, rulings, and skill usage.
 
 Semantic memory — file-based, one JSONL per category.
 
@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-CATEGORIES = ("grievances", "lessons", "people", "rulings")
+CATEGORIES = ("grievances", "lessons", "people", "rulings", "usage")
 
 
 @dataclass
@@ -57,8 +57,33 @@ class SemanticMemory:
 
     def ledger(self) -> dict[str, int]:
         """Counts per category, read fresh from disk — what Dad has actually
-        accomplished across every session, not just this one."""
-        return {cat: len(self.recall(cat)) for cat in CATEGORIES}
+        accomplished across every session, not just this one.
+
+        Deliberately excludes 'usage', which is telemetry about the harness
+        rather than something Dad learned about the household. Mixing a skill
+        load counter in with grievances and rulings would make the ledger a
+        worse answer to "what does he know now".
+        """
+        return {cat: len(self.recall(cat)) for cat in CATEGORIES if cat != "usage"}
+
+    def record_use(self, kind: str, name: str) -> None:
+        """Note that a skill (or anything else worth counting) was used.
+
+        Written to the same append-only store as everything else so it survives
+        a restart. Without this, "top skills" can only ever describe the current
+        session, which is the least interesting version of that question — the
+        useful one is which playbooks this household actually reaches for.
+        """
+        self.remember("usage", f"{kind}:{name}", tags=[kind, name])
+
+    def top_skills(self, limit: int = 5) -> list[tuple[str, int]]:
+        """(skill, times loaded) across every session, most used first."""
+        counts: dict[str, int] = {}
+        for entry in self.recall("usage"):
+            if entry.text.startswith("skill:"):
+                name = entry.text.split(":", 1)[1]
+                counts[name] = counts.get(name, 0) + 1
+        return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
 
     def files(self) -> list[tuple[str, int]]:
         """(filename, size in bytes) per category file, for the admin view —

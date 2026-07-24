@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-17
 Purpose: Mom governance layer that reviews and overrules tool calls and replies.
 
 Mom — the governance layer that sits above the model.
@@ -41,7 +41,7 @@ class Verdict:
 Policy = Callable[[Context, str, dict], Verdict]
 
 _SUMMER_MONTHS = {6, 7, 8, 9}   # Jun-Sep: cooling season, cap 74°F
-_MAX_REPLY_SENTENCES = 4        # constitution III.12: 3 for the answer, +1 for care
+_MAX_REPLY_SENTENCES = 5        # constitution III.12: up to 4 for the answer, +1 for care
 
 # Loose markers that a sentence is doing acknowledgment/care, not fact-reporting.
 # Not sentiment analysis — just enough signal to stop Mom amputating warmth
@@ -131,5 +131,5 @@ class Mom:
         sentence_count = len(re.split(r"(?<=[.!?])\s+", text.strip()))
         if sentence_count > self.max_reply_sentences:
             trimmed = _trim_to_sentences(text, self.max_reply_sentences)
-            return trimmed, "Mom trimmed that — rule 12 says four sentences, not a speech."
+            return trimmed, "Mom trimmed that — rule 12 says five sentences, not a speech."
         return text, None

@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-18
 Purpose: Tool registry with JSON schemas and executable callables for the model.
 
 Tools the model can call. Each is a JSON schema (sent to the model) plus a
@@ -45,6 +45,37 @@ def execute(name: str, ctx: Context, args: dict) -> str:
         return f"(Tool {name} fumbled: {exc}. Dad blames the instructions.)"
 
 
+# Dad's home turf. Weather and "near me" lookups default here unless the model
+# passes somewhere else. Kept as one constant so relocating Dad is a one-line edit.
+DEFAULT_LOCATION = "Dallas, TX"
+
+
+def _live_search(ctx: Context, prompt: str, *, max_tokens: int = 400) -> str | None:
+    """Run a real web search via a nested Claude call with the server-side
+    web_search tool, and return the model's concise text answer.
+
+    Returns None when there's no client (offline) so callers can fall back to a
+    mocked value instead of pretending they went to the web. Every genuine
+    outside fact in dadloop — weather, prices, store hours, how-to steps —
+    flows through here, so the multi-hop reasoning has something real to chain
+    through. Mocked house state + real search is the honest combination.
+    """
+    client = getattr(ctx, "_client", None)
+    if client is None:
+        return None
+    try:
+        resp = client.messages.create(
+            model=getattr(ctx, "_model", "claude-sonnet-5"),
+            max_tokens=max_tokens,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        return text.strip() or None
+    except Exception as exc:
+        return f"(Web search hiccup: {exc}. Dad blames the router.)"
+
+
 # --- the tools -----------------------------------------------------------
 _NO_ARGS = {"type": "object", "properties": {}}
 
@@ -61,9 +92,36 @@ WORLD = {
 }
 
 
-@tool("check_weather", "Check the weather. Dad always editorializes about jackets.", _NO_ARGS)
-def check_weather(ctx: Context) -> str:
-    return f"It's {WORLD['weather_f']}°F. Bring a jacket, you can always take it off."
+@tool(
+    "check_weather",
+    "Check the CURRENT, REAL weather via web search. Pass a location if the "
+    f"person named one; otherwise it defaults to home ({DEFAULT_LOCATION}). Use "
+    "this whenever the plan depends on weather — a cookout, a run, yard work, a "
+    "road trip. Dad always editorializes about jackets.",
+    {
+        "type": "object",
+        "properties": {
+            "location": {
+                "type": "string",
+                "description": f"City/area to check. Defaults to {DEFAULT_LOCATION}.",
+            }
+        },
+    },
+)
+def check_weather(ctx: Context, location: str = DEFAULT_LOCATION) -> str:
+    location = (location or DEFAULT_LOCATION).strip()
+    live = _live_search(
+        ctx,
+        f"What is the current weather in {location} right now? Give the "
+        "temperature in °F and a few words on conditions (rain, wind, sky).",
+        max_tokens=300,
+    )
+    if live:
+        return (f"{location}: {live} "
+                "Bring a jacket, you can always take it off.")
+    # Offline fallback — the mocked world so demos still run without a key.
+    return (f"{location}: it's about {WORLD['weather_f']}°F (offline estimate). "
+            "Bring a jacket, you can always take it off.")
 
 
 @tool(
@@ -169,7 +227,11 @@ def find_tool(ctx: Context, need: str) -> str:
 @tool(
     "web_search",
     "Search the real web for outside facts Dad can't know from around the house — "
-    "recipes, prices, store hours, how-to steps. Use for anything not about THIS home.",
+    "movie showtimes and what's playing, restaurant and store hours, tickets and "
+    "events, prices, recipes, how-to steps, what's open right now. Use this for "
+    "anything time-sensitive or not about THIS home. It already knows today's "
+    "date and that home is "
+    f"{DEFAULT_LOCATION}, so just ask the question the way the person asked it.",
     {
         "type": "object",
         "properties": {"query": {"type": "string", "description": "What to look up"}},
@@ -183,22 +245,31 @@ def web_search(ctx: Context, query: str) -> str:
     every real sensor in a demo. But genuine outside facts come from the actual
     web, so multi-hop reasoning has something real to chain through. Mocked world
     + real search is the honest combination.
+
+    Anything local ("near me", "closest", store hours) is assumed to be around
+    home unless the query says otherwise, so the answer stays contextual.
     """
-    client = getattr(ctx, "_client", None)
-    if client is None:
+    from datetime import datetime
+    now = datetime.now()
+    hour12 = now.hour % 12 or 12
+    stamp = (f"{now.strftime('%A, %B')} {now.day}, {now.year}, "
+             f"{hour12}:{now.strftime('%M %p')}")
+    live = _live_search(
+        ctx,
+        "Search the web and answer concisely in 2-3 sentences. "
+        # Without the date, an inner search has no way to resolve "today" or
+        # "tonight" — it is a fresh context with no idea when now is. Showtimes,
+        # events and opening hours are all worthless without it.
+        f"For reference, right now it is {stamp} and the user is in "
+        f"{DEFAULT_LOCATION}. Resolve 'today', 'tonight' and 'this weekend' "
+        "against that, and assume anything local (stores, showtimes, prices, "
+        "hours, 'near me') refers to that area unless the question names another "
+        f"place. Include specifics — times, addresses, prices — when the question "
+        f"asks for them. Question: {query}",
+    )
+    if live is None:
         return f"(Offline — can't search the web for '{query}'.)"
-    try:
-        resp = client.messages.create(
-            model=getattr(ctx, "_model", "claude-sonnet-5"),
-            max_tokens=400,
-            tools=[{"type": "web_search_20250305", "name": "web_search"}],
-            messages=[{"role": "user", "content":
-                       f"Search the web and answer concisely in 2-3 sentences: {query}"}],
-        )
-        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-        return text.strip() or f"(No clear result for '{query}'.)"
-    except Exception as exc:
-        return f"(Web search hiccup on '{query}': {exc}. Dad blames the router.)"
+    return live or f"(No clear result for '{query}'.)"
 
 
 @tool(
@@ -254,6 +325,14 @@ def load_skill(ctx: Context, name: str) -> str:
     if skill is None:
         avail = ", ".join(skill_lib.SKILLS)
         return f"No skill '{name}'. Available: {avail}."
+    # Note the reach for this playbook. Which skills a household actually uses is
+    # only interesting across sessions, so it goes to disk rather than a counter
+    # that dies with the process.
+    try:
+        ctx.memory.record_use("skill", name)
+    except Exception:
+        # Telemetry must never be the reason a turn fails.
+        pass
     return skill.body
 
 

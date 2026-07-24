@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-18
 Purpose: Tests Mom enforces constitution voice rules on final replies.
 
 Proves the constitution's voice rules are mechanically enforced by Mom on
@@ -17,6 +17,7 @@ def test_mom_trims_long_winded_reply():
             speech = (
                 "First I checked the weather. Then I checked the grill. "
                 "Then I thought about the budget. Then I considered the yard. "
+                "Then I double-checked the pantry. "
                 "Finally, here is my answer: yes, we are ready."
             )
             return NS(content=[NS(type="text", text=speech)])
@@ -28,7 +29,7 @@ def test_mom_trims_long_winded_reply():
     reply = dad.turn("are we ready", on_event=lambda k, p: events.append((k, p)))
 
     sentence_count = reply.count(".") + reply.count("!") + reply.count("?")
-    assert sentence_count <= 4, f"reply has {sentence_count} sentences, constitution caps at 4"
+    assert sentence_count <= 5, f"reply has {sentence_count} sentences, constitution caps at 5"
 
     mom_notes = [p for k, p in events if k == "controller" and p[0] == "reply"]
     assert mom_notes, "Mom should have logged her trim"
@@ -75,7 +76,35 @@ def test_mom_protects_care_sentence_from_the_cut():
     print("PASS: Mom protected the acknowledgment sentence instead of cutting it for coming last")
 
 
+def test_dad_is_grounded_in_identity_place_and_time():
+    """Dad must know who he is, where he is, and when 'today' is.
+
+    Without this the agent answers "I want to watch Odyssey in theaters today"
+    as though the date were unknowable — asking the user what day it is, or
+    deflecting to "check your local listings". A harness that has a clock and a
+    location and still does that is just being unhelpful on purpose.
+    """
+    from datetime import datetime
+    from dadloop.core.agent import _constitution
+    from dadloop.core.context import Context
+
+    text = _constitution(Context())
+
+    assert "Swami Chandrasekaran" in text, "Dad should know his own name"
+    assert "Dallas, TX" in text, "Dad should know where home is"
+
+    now = datetime.now()
+    assert str(now.year) in text and now.strftime("%A") in text, \
+        "Dad should know today's date, not just that a date exists"
+
+    lowered = text.lower()
+    assert "showtimes" in lowered, "time-sensitive lookups should be called out"
+    assert "never ask what today's date is" in lowered
+    print("PASS: Dad knows his name, his city, and what day it is")
+
+
 if __name__ == "__main__":
     test_mom_trims_long_winded_reply()
     test_short_reply_passes_untouched()
     test_mom_protects_care_sentence_from_the_cut()
+    test_dad_is_grounded_in_identity_place_and_time()

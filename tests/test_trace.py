@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-17
 Purpose: Tests tracer rollups and telemetry event streaming.
 
 Proves the tracer rolls up tokens, cost, and the model-vs-tool latency split,
@@ -14,6 +14,11 @@ def _client():
     class FM:
         def __init__(self): self.n = 0
         def create(self, **kw):
+            # check_weather makes a nested web_search call; answer it inline so
+            # it doesn't consume a scripted outer-loop turn or skew the rollup.
+            if any(t.get("type", "").startswith("web_search") for t in (kw.get("tools") or [])):
+                return NS(content=[NS(type="text", text="Clear, 58°F.")],
+                          usage=NS(input_tokens=0, output_tokens=0))
             self.n += 1
             if self.n == 1:
                 return NS(content=[NS(type="tool_use", id="a", name="check_weather", input={})],
