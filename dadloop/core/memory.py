@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-18
+Last Modified: 2026-07-20
 Purpose: File-based semantic memory for grievances, lessons, people, rulings, and skill usage.
 
 Semantic memory — file-based, one JSONL per category.
@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-CATEGORIES = ("grievances", "lessons", "people", "rulings", "usage")
+CATEGORIES = ("grievances", "lessons", "people", "rulings", "usage", "outcomes")
 
 
 @dataclass
@@ -59,12 +59,14 @@ class SemanticMemory:
         """Counts per category, read fresh from disk — what Dad has actually
         accomplished across every session, not just this one.
 
-        Deliberately excludes 'usage', which is telemetry about the harness
-        rather than something Dad learned about the household. Mixing a skill
-        load counter in with grievances and rulings would make the ledger a
-        worse answer to "what does he know now".
+        Deliberately excludes the telemetry categories ('usage', 'outcomes'),
+        which count harness activity rather than things Dad learned about the
+        household. Mixing a skill-load counter or an RSI outcome log in with
+        grievances and rulings would make the ledger a worse answer to "what
+        does he know now".
         """
-        return {cat: len(self.recall(cat)) for cat in CATEGORIES if cat != "usage"}
+        skip = {"usage", "outcomes"}
+        return {cat: len(self.recall(cat)) for cat in CATEGORIES if cat not in skip}
 
     def record_use(self, kind: str, name: str) -> None:
         """Note that a skill (or anything else worth counting) was used.

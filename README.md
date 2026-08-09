@@ -15,7 +15,7 @@ So I built dadloop: a minimal, executable agent harness that makes those pieces 
 Requires Python 3.10+ and an [Anthropic API key](https://console.anthropic.com).
 
 ```bash
-git clone https://github.com/you/dadloop && cd dadloop
+git clone https://github.com/swamichandra/dadloop && cd dadloop
 pip install -e .
 cp .env.example .env    # add your key to this file
 ```
@@ -25,6 +25,7 @@ cp .env.example .env    # add your key to this file
 ```bash
 dadloop                   # terminal UI
 dadloop --repl            # plain REPL
+dadloop --improve         # run the self-improvement loop from the command line
 python -m dadloop.demos   # five scripted scenarios
 ```
 
@@ -73,7 +74,7 @@ Every tool is listed in [docs/architecture.md](docs/architecture.md); every skil
 
 ## Dad, and the constitution Mom holds him to
 
-Dad is not a persona bolted on for charm. He runs on a written constitution, injected every turn — thirteen rules in three parts:
+Dad is not a persona bolted on for charm. He runs on a written constitution, injected every turn — sixteen rules in four parts:
 
 - **Grounding** — who he is, where home is, and what today's date and time actually are, so "tonight" and "this weekend" resolve to something real.
 - **Values** — steady and clever; say what's true, not what's easy to hear; provide and do, don't lecture.
@@ -90,6 +91,32 @@ Mom holds the pen. She owns amendments Dad cannot override, and three rules are 
 
 Governance is not a disclaimer in the system prompt. It is a layer above the model that can overrule it.
 
+## Self-improvement, with the limits kept in view
+
+An agent harness that can rewrite itself is either the most useful thing here or the most dangerous, depending entirely on what it is allowed to touch and who gets the final say. dadloop takes the honest version: a real loop that can improve Dad's playbooks, explicit walls it cannot cross, and a human at the gate.
+
+Here is the whole idea. Dad's skills are Markdown procedures — the part of him that is editable without retraining. Every turn already records things the model cannot fake: how much of its own stated plan it finished, how many tool calls errored, whether Mom had to veto, what it cost. The loop scores each skill from *those* signals, not from "did the answer read well." A skill that keeps leaving its plan half-done scores low; one that reliably finishes scores high. It refuses to judge a skill at all until it has seen it enough times, so a single bad turn can't condemn a playbook.
+
+When a skill has gone mature-and-underperforming, the loop can draft a rewrite, then **replay** it against real past cases to see whether the new version actually behaves better — completes more of the plan, trips fewer errors. If it can't tell the difference, it says so rather than guessing. And it never applies a change on its own. A winning rewrite is *proposed*; a person presses the key that promotes it, exactly the way Mom gates Dad. The old version is backed up on the way.
+
+What the loop **cannot** touch is enforced in code, not asked for politely:
+
+| wall | why |
+|---|---|
+| The constitution | Dad's values and grounding are Mom's to amend, not the loop's. |
+| Mom's policies | The thing doing the improving can't loosen the thing that governs it. |
+| The tools | New capabilities are a human decision, not a self-granted one. |
+| The agent loop | The machinery doing the rewriting stays outside what gets rewritten. |
+| Promotion | The loop proves; a person commits. It never ships its own change. |
+
+The loop rewrites skill files and nothing else. A rewrite that tries to escape the skills directory is blocked at the point of the write.
+
+You can watch the whole thing run. Press `F6` on the work surface — or run `dadloop --improve` from the command line — and it works through the stages in the open: the walls first, then the grounded scores, the skill it picked, the rewrite it drafted, the replay, and the gate where it stops and hands you the decision.
+
+<p align="center">
+<img src="docs/tui-improve.png" alt="The self-improvement loop, mid-run" width="40%">
+</p>
+
 ## The work surface
 
 The TUI is where the harness shows its work. It is the work surface. Any part of a turn is auditable without leaving it.
@@ -103,8 +130,9 @@ It opens on a launch screen that is also the first prompt — type your question
 - **Canvas** — every tool call is a collapsible step: the arguments passed, the result returned. Skills appear as he pulls them, so a four-skill reconciliation reads as four visible moves. `Tab` walks them, `Enter` opens one, `f2`/`f3` open and close them all.
 - **Plan panel** — Dad's stated plan, checking off as calls resolve. A call that was *not* in the plan is appended and marked unplanned, so intent and behavior stay side by side.
 - **Governance surface** — when Mom *holds* a call for review, the loop pauses behind a bordered card naming the proposed action and her reasoning. Lighter touches — a rewritten argument, a trimmed reply — land inline as review cards. Either way the call, the verdict, and the reason are on screen, not a log line.
-- **Scoreboard** — session totals (turns, tools, tokens, cost, latency), what Dad has accomplished across every session (calls settled, lessons learned, problems carried forward), and a ranking of the skills this household actually reaches for.
+- **Scoreboard** — session totals (turns, tools, tokens, cost, latency), what Dad has accomplished across every session (calls settled, lessons learned, problems carried forward), a ranking of the skills this household actually reaches for, and a **skill-health** readout that flags when a playbook has become worth improving and points you at `F6`.
 - **Admin view** (`f4`) — the harness inspecting itself: tools and schemas, skills and which are loaded, the constitution, Mom's live policies, the memory files on disk, the telemetry.
+- **Self-improvement** (`f6`) — the loop that scores and rewrites Dad's skills, run in the open and gated by you.
 
 The shell is framed by default — an inset card on a darker backdrop. A terminal has no drop shadows and no rounded outer corner, so if you would rather have the space back, `DADLOOP_SHELL=full python -m dadloop` drops the frame and runs edge to edge.
 
@@ -132,11 +160,13 @@ The cookout is one shape. Here are the others.
 
 ## What's new
 
+**Dad can improve his own playbooks — and show you the limits.** A real self-improvement loop scores each skill from things the model can't fake (how much of its plan it finished, tool errors, Mom's vetoes, cost), drafts a rewrite when one has gone stale, and replays it against past cases to prove it actually behaves better. What it can't touch — the constitution, Mom's policies, the tools, the loop itself, and the promotion decision — is walled off in code. Nothing ships without you: press `F6` to watch it run and hold the gate, or `dadloop --improve` from the command line. The rail flags a skill the moment it's worth improving.
+
 **A launch screen you can start from.** dadloop opens on a landing page rather than an empty canvas — wordmark, headline, and a sample turn showing a real constraint being reconciled. The prompt on it is live: type the first thing you want worked out, press Enter, and it carries into the work surface and runs. Escape skips it; `DADLOOP_NO_LAUNCH=1` turns it off.
 
 **Every reply says what it did.** Dad's answer now carries an `ACTION TAKEN` line above it — checks run, skills assembled, and any call Mom blocked or rewrote. His reply says what he concluded; this says what the harness actually did on your behalf, which for something that can spend money and set the thermostat deserves its own line.
 
-**The rail keeps score across sessions.** Two new panels: **Accomplishments** — calls settled, lessons learned, problems carried forward — and **Top skills**, a ranked bar chart of which playbooks this household actually reaches for. Skill loads are now written to disk, so the ranking describes months of use rather than the last ten minutes.
+**The rail keeps score across sessions.** Three panels now: **Accomplishments** — calls settled, lessons learned, problems carried forward — **Top skills**, a ranked bar chart of which playbooks this household actually reaches for, and **Skill health**, a grounded read on which playbooks are working and which have become worth a rewrite. Skill loads are written to disk, so the ranking describes months of use rather than the last ten minutes.
 
 **Redesigned work surface.** New warm near-black palette with one coral accent and muted semantic colors — olive for what went right, gold for skills assembling and for Mom holding a call, rust reserved for real trouble. Tool calls now read as a tight rail of single lines (`✓ Checking the budget · amount=40 · 210ms`) instead of stacked cards, so a seven-tool turn scans in one glance. New title bar, live status line, an active-step highlight in the plan panel, and a governance-hold modal for held actions. The shell is framed by default; `DADLOOP_SHELL=full` runs edge to edge.
 

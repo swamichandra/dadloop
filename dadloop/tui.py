@@ -314,6 +314,7 @@ class RailStats(_S):
             f"{self._row('avg / turn', f'{t.avg_turn_ms:.0f}ms')}\n\n"
             + self._accomplishments(led)
             + self._top_skills()
+            + self._skill_health()
             + "[$muted]MEMORY[/]\n"
             f"{self._row('grievances', str(led['grievances']))}\n"
             f"{self._row('rulings', str(led['rulings']))}\n"
@@ -377,6 +378,53 @@ class RailStats(_S):
             lines.append(f"{bar} [$ink-text]{label}[/] [$muted-2]{count}[/]")
         return "\n".join(lines) + "\n\n"
 
+    def _skill_health(self) -> str:
+        """Grounded health of the skills Dad has actually used — the always-on,
+        free half of self-improvement. Pure arithmetic over stored outcomes: no
+        model call, so it can refresh every turn like the rest of the rail.
+
+        A skill that has gone mature-and-underperforming gets a coral nudge —
+        the gentle 'this is improvable' signal — pointing at the RSI screen. The
+        loop that would act on it is expensive and user-gated; this is just the
+        indicator that it might be worth running.
+        """
+        from .core import improve
+        try:
+            used = [n for n, _ in self.dad.ctx.memory.top_skills(limit=6)]
+            scores = [improve.score_skill(self.dad.ctx.memory, n) for n in used]
+        except Exception:
+            return ""
+        scores = [s for s in scores if s.samples]
+        if not scores:
+            return ""
+
+        mark = {"healthy": "[$done]●[/]", "mixed": "[$skill]●[/]",
+                "underperforming": "[$problem]●[/]"}
+        lines = ["[$muted]SKILL HEALTH[/]"]
+        improvable = 0
+        for s in sorted(scores, key=lambda s: (s.mature, s.health)):
+            label = s.skill if len(s.skill) <= 16 else s.skill[:15] + "…"
+            if not s.mature:
+                dot = "[$faint]○[/]"
+                tail = f"[$faint]{s.samples}/{s.MIN_SAMPLES}[/]"
+            else:
+                key = ("underperforming" if s.health < 0.6
+                       else "mixed" if s.health < 0.85 else "healthy")
+                dot = mark[key]
+                tail = f"[$muted-2]{s.health:.0%}[/]"
+                if s.health < 0.85:
+                    improvable += 1
+            lines.append(f"{dot} [$ink-text]{label}[/] {tail}")
+
+        block = "\n".join(lines) + "\n"
+        if improvable:
+            # The nudge. Passive — a fact, not a modal — and it names the way to
+            # act on it rather than acting on its own.
+            block += (f"[$dad]▸ {improvable} skill"
+                      f"{'s' if improvable != 1 else ''} improvable[/] "
+                      f"[$muted-2]· F6[/]\n")
+        return block + "\n"
+
 
 class KeyBar(_S):
     """The footer.
@@ -398,6 +446,7 @@ class KeyBar(_S):
         ("F3", "collapse"),
         ("F4", "admin"),
         ("F5", "clear"),
+        ("F6", "improve"),
         ("^Q", "quit"),
     ]
 
@@ -407,6 +456,14 @@ class KeyBar(_S):
         ("↑↓", "scroll"),
         ("Esc", "back"),
         ("F4", "back"),
+        ("^Q", "quit"),
+    ]
+
+    # The self-improvement screen: run the loop, gate a promotion, leave.
+    RSI_KEYS = [
+        ("r", "run loop"),
+        ("p", "promote"),
+        ("Esc", "back"),
         ("^Q", "quit"),
     ]
 
@@ -675,8 +732,17 @@ class AdminScreen(Screen):
             rows.append(f"[$hold]•[/] [$ink-text]{doc}[/]")
         rows.append(f"[$hold]•[/] [$ink-text]max reply: "
                     f"{self.dad.mom.max_reply_sentences} sentences[/]")
+        # RSI's walls belong next to Mom's — both are governance the model can't
+        # override. Naming the boundary here, in the TUI, is the honest-limits
+        # stance: the self-improvement loop exists, and so does the fence around
+        # it. Full loop runs from `dadloop --improve`.
+        rsi = ("\n[$dad]SELF-IMPROVEMENT[/] [$muted-2]· dadloop --improve[/]\n"
+               "[$muted-2]RSI may rewrite skills only. Walled off:[/]\n"
+               "[$problem]✗[/] [$ink-text]the constitution & Mom's policies[/]\n"
+               "[$problem]✗[/] [$ink-text]the tools & the agent loop[/]\n"
+               "[$hold]•[/] [$ink-text]promotion needs a human[/]")
         return (f"[$dad]MOM'S POLICIES[/] [$muted-2]· {len(self.dad.mom.policies)}[/]\n\n"
-                + "\n".join(rows))
+                + "\n".join(rows) + "\n" + rsi)
 
     def _memory_text(self) -> str:
         root = self.dad.ctx.memory.root
@@ -698,6 +764,212 @@ class AdminScreen(Screen):
             f"{row('cost', f'~${t.cost:.4f}', '$dad')}\n"
             f"{row('avg/turn', f'{t.avg_turn_ms:.0f}ms')}"
         )
+
+
+# ------------------------------------------------------------- self-improvement
+class ImproveScreen(Screen):
+    """The recursive self-improvement loop, live and legible — pushed with F6.
+
+    This is the expensive, on-demand half of RSI. Scoring is free and lives in
+    the rail; proposing and replaying cost real model calls and seconds, so they
+    happen here, only when asked, and always on a worker thread so the loop never
+    freezes the conversation behind it.
+
+    The screen stages the loop the way the CLI does, but streaming: it prints the
+    walls first (a limit you can't see isn't a limit), then scores, picks a
+    target, drafts a rewrite, replays it against frozen cases, and stops at the
+    gate. Promotion is a keystroke a human presses — the loop proves, a person
+    commits. Every stage lands on the log as it completes, so a long replay looks
+    like progress rather than a hang.
+    """
+
+    BINDINGS = [
+        Binding("f6", "app.pop_screen", "Back", show=True),
+        Binding("escape", "app.pop_screen", "Back", show=False),
+        Binding("r", "run", "Run loop", show=True),
+        Binding("p", "promote", "Promote", show=True),
+        Binding("ctrl+q", "app.quit", "Quit", show=True),
+    ]
+
+    CSS = paint("""
+    ImproveScreen { background: $background; }
+
+    #keybar {
+        dock: bottom; height: 1; padding: 0 2;
+        background: $bar-low; color: $muted-2;
+        text-wrap: nowrap; text-overflow: ellipsis;
+    }
+    #rsi-titlebar {
+        dock: top; height: 2; padding: 0 2;
+        background: $bar; color: $ink-text;
+        border-bottom: solid $dad;
+    }
+    #rsi-body { padding: 1 2; }
+    .rsi-walls {
+        border: round $problem; background: $problem 8%;
+        padding: 1 2; margin: 0 0 1 0; color: $ink-text;
+    }
+    .rsi-stage {
+        border-left: solid $hair-2; padding: 0 1; margin: 0 0 0 1;
+        color: $ink-text;
+    }
+    .rsi-diff {
+        background: $bar-low; border: round $hair;
+        padding: 1 2; margin: 1 0; color: $muted;
+    }
+    .rsi-gate {
+        border: round $hold; background: $hold 10%;
+        padding: 1 2; margin: 1 0; color: $ink-text;
+    }
+    """)
+
+    def __init__(self, dad: AgentLoop) -> None:
+        super().__init__()
+        self.dad = dad
+        self._proposal = None      # the current proposal, if the loop produced one
+        self._loop_running = False
+
+    def compose(self) -> ComposeResult:
+        yield _S("[b]dadloop[/b] [$faint]│[/] [$dad]self-improvement[/]"
+                 "   [$muted-2]r run · p promote · esc back[/]", id="rsi-titlebar")
+        yield VerticalScroll(id="rsi-body")
+        yield KeyBar(KeyBar.RSI_KEYS, id="keybar")
+
+    def on_mount(self) -> None:
+        self._mount(_S(self._walls_text(), classes="rsi-walls"))
+        self._mount(_S(self._scores_text(), classes="rsi-stage"))
+        self._mount(_S("[$muted-2]Press [$dad]r[/] to run the loop — it will "
+                       "score, propose, and replay. Nothing is applied without "
+                       "your [$dad]p[/].[/]", classes="rsi-stage"))
+
+    def _mount(self, widget) -> None:
+        self.query_one("#rsi-body", VerticalScroll).mount(widget)
+        widget.scroll_visible()
+
+    # --- static panels ----------------------------------------------------
+    def _walls_text(self) -> str:
+        from .core import improve
+        lines = ["[$problem]WHAT THIS LOOP CANNOT TOUCH[/] "
+                 "[$muted-2]· enforced in code[/]"]
+        for name, _reason in improve.WALLS:
+            lines.append(f"[$problem]✗[/] [$ink-text]{name}[/]")
+        lines.append("[$muted-2]RSI rewrites skills only. A human promotes.[/]")
+        return "\n".join(lines)
+
+    def _scores_text(self) -> str:
+        from .core import improve, skills as skill_lib
+        scores = improve.score_all(self.dad.ctx.memory, skill_lib.SKILLS.keys())
+        scored = [s for s in scores if s.samples]
+        if not scored:
+            return ("[$dad]SKILL SCORES[/]\n[$muted-2]No outcomes yet — use Dad, "
+                    "then come back. The loop scores real turns, not invented "
+                    "ones.[/]")
+        lines = ["[$dad]SKILL SCORES[/] [$muted-2]· grounded[/]"]
+        for s in scored:
+            if not s.mature:
+                dot, tail = "[$faint]○[/]", f"[$faint]{s.verdict}[/]"
+            else:
+                key = ("[$problem]" if s.health < 0.6
+                       else "[$skill]" if s.health < 0.85 else "[$done]")
+                dot = f"{key}●[/]"
+                tail = f"[$ink-text]{s.health:.0%}[/] [$muted-2]{s.verdict}[/]"
+            lines.append(f"{dot} [$ink-text]{s.skill}[/]  {tail}")
+        return "\n".join(lines)
+
+    # --- the loop, on a worker thread ------------------------------------
+    def action_run(self) -> None:
+        if self._loop_running:
+            return
+        self._loop_running = True
+        self._proposal = None
+        self._mount(_S("[$dad]▸ running the loop…[/]", classes="rsi-stage"))
+        self._work()
+
+    def _stage(self, markup, cls="rsi-stage") -> None:
+        self._mount(_S(markup, classes=cls))
+        self.refresh()
+
+    def _work(self) -> None:
+        from .core import improve_loop as il
+        from .core import skills as skill_lib
+
+        show = self._stage
+
+        target = il.pick_target(self.dad.ctx.memory, skill_lib.SKILLS.keys())
+        if target is None:
+            show("[$done]✓ Nothing to propose.[/] [$muted-2]No skill is both "
+                 "mature and underperforming — the honest, common answer.[/]")
+            self._loop_running = False
+            return
+
+        show(f"[$dad]target:[/] [$ink-text]{target.skill}[/] "
+             f"[$muted-2]· health {target.health:.0%} over {target.samples} "
+             f"turns[/]")
+
+        if not self.dad.online:
+            show("[$problem]Dad is asleep (no API key).[/] [$muted-2]The loop can "
+                 "score and pick, but drafting a rewrite needs a model.[/]")
+            self._loop_running = False
+            return
+
+        show("[$muted-2]asking Dad to rewrite the procedure…[/]")
+        prop = il.propose_rewrite(self.dad, target.skill)
+        if prop.new_body == prop.old_body:
+            show("[$muted-2]Dad returned no change. Nothing to promote.[/]")
+            self._loop_running = False
+            return
+
+        self._mount(_S(prop.diff or "(no diff)", classes="rsi-diff"))
+        self.refresh()
+
+        cases = il._frozen_cases(self.dad.ctx.memory, target.skill, il.REPLAY_CASES)
+        if len(cases) < il.REPLAY_MIN:
+            show(f"[$hold]replay inconclusive[/] [$muted-2]— only {len(cases)} "
+                 f"case(s) on record, need {il.REPLAY_MIN}. The loop won't "
+                 f"recommend on thin evidence.[/]")
+            self._loop_running = False
+            return
+
+        show(f"[$muted-2]replaying {len(cases)} frozen case(s) — this costs real "
+             f"calls…[/]")
+
+        def make_agent():
+            fresh = AgentLoop()
+            fresh._client = self.dad._client
+            fresh.model = self.dad.model
+            return fresh
+
+        result = il.replay_proposal(prop, make_agent, cases)
+        show(f"[$ink-text]incumbent {result.baseline_health:.0%}[/] "
+             f"[$muted-2]vs[/] [$ink-text]candidate "
+             f"{result.candidate_health:.0%}[/]  [$muted-2]→ {result.verdict}[/]")
+
+        self._proposal = prop
+        gate = (f"[$hold]GATE — a human decides[/]\n"
+                f"[$ink-text]{prop.recommend}[/]\n")
+        if prop.recommend.startswith("PROMOTE"):
+            gate += "[$muted-2]Press [$dad]p[/] to promote, or esc to walk away.[/]"
+        else:
+            gate += "[$muted-2]Not recommended. The proposal is logged either way.[/]"
+        self._mount(_S(gate, classes="rsi-gate"))
+        self._loop_running = False
+
+    def action_promote(self) -> None:
+        from .core import improve_loop as il
+        if self._proposal is None:
+            self._mount(_S("[$muted-2]Nothing to promote — run the loop first "
+                           "([$dad]r[/]).[/]", classes="rsi-stage"))
+            return
+        if not self._proposal.recommend.startswith("PROMOTE"):
+            self._mount(_S("[$problem]Refusing to promote a proposal replay "
+                           "didn't back.[/] [$muted-2]The gate only opens on a "
+                           "proven win.[/]", classes="rsi-stage"))
+            return
+        ok, msg = il.promote(self.dad, self._proposal)
+        icon = "[$done]✓[/]" if ok else "[$problem]✗[/]"
+        self._mount(_S(f"{icon} [$ink-text]{msg}[/]", classes="rsi-gate"))
+        if ok:
+            self._proposal = None
 
 
 # ------------------------------------------------------------------- main app
@@ -946,6 +1218,7 @@ class DadApp(App):
         Binding("f3", "collapse_all", "Collapse", show=True),
         Binding("f4", "admin", "Admin", show=True),
         Binding("f5", "clear", "Clear", show=True),
+        Binding("f6", "improve", "Improve", show=True),
         Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
@@ -1277,6 +1550,12 @@ class DadApp(App):
 
     def action_admin(self) -> None:
         self.push_screen(AdminScreen(self.dad, self._skills_loaded))
+
+    def action_improve(self) -> None:
+        # The rail nudges when a skill goes improvable; this is where you act on
+        # it. The screen runs the expensive loop on its own worker, so opening it
+        # never blocks the conversation behind it.
+        self.push_screen(ImproveScreen(self.dad))
 
     def action_expand_all(self) -> None:
         for c in self.query(Collapsible):

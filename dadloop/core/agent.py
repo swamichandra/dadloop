@@ -238,9 +238,17 @@ class AgentLoop:
         self.ctx._client = self._client        # type: ignore[attr-defined]
         self.ctx._model = self.model           # type: ignore[attr-defined]
 
-        with self.tracer.span("turn"):
+        with self.tracer.span("turn") as turn_span:
             plan = Plan()
             plan_captured = False
+            # Grounded signals for RSI scoring, accumulated as the turn runs.
+            # None of these is a judgement — they are things the harness watches
+            # happen: which skills got loaded, how many tool calls errored, how
+            # often Mom stepped in. Flushed to an OutcomeRecord at turn's end,
+            # but only if a skill was actually loaded (nothing to score otherwise).
+            loaded_skills: list[str] = []
+            tool_error_count = 0
+            veto_count = 0
             for _ in range(_MAX_STEPS):
                 with self.tracer.span("llm.call", model=self.model) as llm:
                     resp = self._client.messages.create(
@@ -263,6 +271,9 @@ class AgentLoop:
                     final_text, mom_note = self.mom.review_reply(interim)
                     if mom_note:
                         emit("controller", ("reply", "modify", mom_note))
+                    self._record_skill_outcome(
+                        turn_span, plan, loaded_skills, tool_error_count,
+                        veto_count, user_text)
                     emit("final", final_text)
                     return final_text
 
@@ -285,6 +296,7 @@ class AgentLoop:
                     verdict = self.mom.review(self.ctx, tu.name, tu.input)
                     tool_ms = 0.0   # a blocked call never runs, so it costs no time
                     if verdict.action == "deny":
+                        veto_count += 1
                         out = f"[blocked by Mom] {verdict.reason}"
                         emit("controller", (tu.name, "deny", verdict.reason, tu.input))
                         # A governance system that forgets every blocked request is a
@@ -297,10 +309,21 @@ class AgentLoop:
                     else:
                         args = verdict.args if verdict.action == "modify" else tu.input
                         if verdict.action == "modify":
+                            veto_count += 1
                             emit("controller", (tu.name, "modify", verdict.reason, args))
                         with self.tracer.span("tool.execute", tool=tu.name) as tspan:
                             out = toolkit.execute(tu.name, self.ctx, args)
                         tool_ms = tspan.ms
+                        # Track which skills the turn pulled in — these are the
+                        # units RSI scores — and whether the call came back an
+                        # error, which is a grounded failure signal.
+                        if tu.name == "load_skill":
+                            sk = (args or {}).get("name")
+                            if sk:
+                                loaded_skills.append(sk)
+                    if isinstance(out, str) and out.lower().startswith(
+                            ("error", "no skill", "[blocked")):
+                        tool_error_count += 1
                     # Duration rides along as a 4th element so the canvas can show
                     # a right-aligned timing per step. Consumers that only care
                     # about (name, out, id) keep unpacking the first three.
@@ -315,6 +338,43 @@ class AgentLoop:
         stuck = "(Dad got distracted and wandered off mid-thought. Ask again.)"
         emit("final", stuck)
         return stuck
+
+    def _record_skill_outcome(self, turn_span, plan, loaded_skills,
+                              tool_errors, vetoes, user_text="") -> None:
+        """Persist one grounded RSI outcome per skill the turn loaded.
+
+        Only fires when a skill was actually loaded — a turn with no skill has
+        nothing for the improvement loop to score. Everything recorded is a fact
+        the harness watched happen: plan completion from the checklist, tool
+        errors and vetoes counted in the loop, tokens and cost read back off the
+        turn's own spans (the same numbers the tracer reports). No quality
+        judgement is stored, because a gameable signal would make the whole loop
+        meaningless. Best-effort: RSI telemetry must never break a turn.
+        """
+        if not loaded_skills:
+            return
+        try:
+            from .trace import _walk, _COST_PER_MTOK_IN, _COST_PER_MTOK_OUT
+            from .improve import OutcomeRecord, record_outcome
+
+            spans = list(_walk(turn_span))
+            tok_in = sum(s.attrs.get("tokens_in", 0) for s in spans)
+            tok_out = sum(s.attrs.get("tokens_out", 0) for s in spans)
+            cost = tok_in / 1e6 * _COST_PER_MTOK_IN + tok_out / 1e6 * _COST_PER_MTOK_OUT
+            tokens = tok_in + tok_out
+            steps = len(plan.steps)
+            done = sum(1 for s in plan.steps if s.done)
+            tool_calls = sum(1 for s in spans if s.name == "tool.execute")
+
+            # One record per distinct skill the turn used. A turn that composed
+            # three skills credits (and debits) all three on the same outcome.
+            for sk in dict.fromkeys(loaded_skills):
+                record_outcome(self.ctx.memory, OutcomeRecord(
+                    skill=sk, plan_steps=steps, plan_done=done,
+                    tool_calls=tool_calls, tool_errors=tool_errors,
+                    vetoes=vetoes, tokens=tokens, cost=cost, prompt=user_text))
+        except Exception:
+            pass
 
     # --- plain REPL fallback (no TUI dependency) --------------------------
     def run(self) -> None:

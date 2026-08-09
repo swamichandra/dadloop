@@ -1,11 +1,12 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-12
+Last Modified: 2026-07-20
 Purpose: CLI entry point for launching the TUI or REPL.
 
 Entry point.
 
     python -m dadloop            launch the TUI (falls back to REPL if needed)
     python -m dadloop --repl     force the plain terminal REPL
+    python -m dadloop --improve  run the recursive self-improvement loop
     dadloop                      console script (after `pip install -e .`)
 """
 import sys
@@ -15,6 +16,10 @@ from dadloop import AgentLoop
 
 def main() -> None:
     dad = AgentLoop()
+
+    if "--improve" in sys.argv:
+        from dadloop.improve_cli import run_improve
+        raise SystemExit(run_improve(dad))
 
     if "--repl" in sys.argv:
         dad.run()
