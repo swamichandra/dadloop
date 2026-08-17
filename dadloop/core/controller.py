@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-17
+Last Modified: 2026-08-15
 Purpose: Mom governance layer that reviews and overrules tool calls and replies.
 
 Mom — the governance layer that sits above the model.
@@ -101,8 +101,16 @@ def _trim_to_sentences(text: str, limit: int) -> str:
 
 
 class Mom:
-    """The controller. Runs each proposed tool call past its policies, and
-    reviews Dad's final reply against the constitution's voice rules."""
+    """The controller. Her authority is over *actions*: every proposed tool call
+    runs past her policies, and she can allow, block, or rewrite it before it
+    executes. That is governance, and it fires only when a real threshold is
+    crossed.
+
+    She also tightens Dad's final reply against his voice rules, but that is
+    editing rather than authority — it happens quietly, raises no event, and is
+    kept deliberately separate so a rare, meaningful veto never looks like a
+    routine style note.
+    """
 
     def __init__(self, policies: list[Policy] | None = None,
                  max_reply_sentences: int = _MAX_REPLY_SENTENCES) -> None:
@@ -120,16 +128,26 @@ class Mom:
                 return verdict
         return Verdict("allow")
 
-    def review_reply(self, text: str) -> tuple[str, str | None]:
-        """Enforce constitution III (voice): terse, but not cold.
+    def enforce_voice(self, text: str) -> str:
+        """Tighten Dad's final reply to the constitution's voice rules.
 
-        Returns (possibly-trimmed text, a note if Mom intervened or None).
-        This is Mom managing the constitution, not just narrating it — the
-        same mechanism as her tool veto, aimed at the final utterance. She
-        protects one line of warmth from the cut; she doesn't protect padding.
+        This is NOT governance, and deliberately does not look like it. Mom's
+        authority — review() — is about *actions with consequences*: a spend
+        over the cap, a thermostat past the seasonal limit, a call that must be
+        blocked or rewritten before it executes. Those are thresholds, they are
+        rare, and when one fires the human should see it.
+
+        Trimming a long reply is a different kind of thing entirely. It is
+        editing, against Dad's own voice rules, and it would fire on nearly
+        every thorough answer. Surfacing it with the same weight as a veto made
+        Dad look supervised on every turn and made real vetoes indistinguishable
+        from style notes. So this runs quietly and reports nothing: the reply
+        gets tighter, and no governance event is raised.
+
+        She still protects one line of warmth from the cut; she doesn't protect
+        padding.
         """
         sentence_count = len(re.split(r"(?<=[.!?])\s+", text.strip()))
         if sentence_count > self.max_reply_sentences:
-            trimmed = _trim_to_sentences(text, self.max_reply_sentences)
-            return trimmed, "Mom trimmed that — rule 12 says five sentences, not a speech."
-        return text, None
+            return _trim_to_sentences(text, self.max_reply_sentences)
+        return text

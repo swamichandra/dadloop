@@ -62,9 +62,15 @@ cannot inform later sessions.
 ### Constitution
 
 Mom also enforces Dad's constitution — values, a thinking process, and voice rules. The
-voice rules are mechanical, not advisory: replies over four sentences are trimmed before
+voice rules are mechanical, not advisory: replies over five sentences are trimmed before
 they reach the user, but a line carrying genuine acknowledgment is protected from the cut
 rather than amputated for coming last.
+
+This runs through `Mom.enforce_voice()`, which is deliberately separate from
+`Mom.review()`. `review()` is authority over an action — it can block or rewrite a tool
+call, it fires only on a real threshold, and it emits a `controller` event the UI surfaces.
+`enforce_voice()` is editing, emits nothing, and is invisible by design. Keeping them
+apart is what stops a routine style pass from looking like a veto.
 
 ## Memory
 

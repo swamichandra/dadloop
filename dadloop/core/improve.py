@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-20
+Last Modified: 2026-08-15
 Purpose: Harness-level recursive self-improvement — grounded scoring and hard walls.
 
 Recursive self-improvement, at the harness level, honestly.
@@ -229,3 +229,43 @@ def score_all(memory, skill_names) -> list[SkillScore]:
     want to review them in."""
     scores = [score_skill(memory, name) for name in skill_names]
     return sorted(scores, key=lambda s: (s.mature, s.health))
+
+
+# ---------------------------------------------------------------------------
+# Gate outcomes. Recorded so a repeated HOLD is visible instead of silent — the
+# same "same command, no change, three times, stop" signal Addy Osmani's loop
+# engineering piece names as the tell that a loop is spinning in place. This
+# is not a new memory category: it reuses 'usage', the same append-only store
+# record_use() already writes skill-load counts to, so there is nothing new
+# for a reader of memory.py to learn.
+# ---------------------------------------------------------------------------
+
+def record_gate_outcome(memory, skill: str, verdict: str) -> None:
+    """Log one gate result — HOLD, REJECT, or PROMOTE — for a skill.
+
+    Called once per completed propose/replay/gate pass, regardless of what the
+    human decides to do about it. This is what makes held_streak() possible;
+    without it a repeated HOLD is invisible, you'd only notice by remembering.
+    """
+    kind = verdict.split()[0].upper()   # "HOLD", "REJECT", or "PROMOTE"
+    memory.record_use("rsi-gate", f"{skill}:{kind}")
+
+
+def held_streak(memory, skill: str) -> int:
+    """How many gate passes in a row have NOT promoted this skill.
+
+    Counts back from the most recent gate outcome until it hits a PROMOTE (the
+    streak resets there) or runs out of history. A rising number on the same
+    skill is the "stuck" signal — the loop keeps proposing, replay keeps
+    failing to back it, and re-running is unlikely to change that on its own.
+    """
+    prefix = f"rsi-gate:{skill}:"
+    kinds = [e.text[len(prefix):] for e in memory.recall("usage")
+             if e.text.startswith(prefix)]
+    streak = 0
+    for kind in reversed(kinds):        # most recent first
+        if kind == "PROMOTE":
+            break
+        streak += 1
+    return streak
+

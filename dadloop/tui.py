@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-20
+Last Modified: 2026-08-15
 Purpose: Terminal user interface for auditing agent turns and harness activity.
 
 The work surface — a calmer, long-horizon terminal UI where the harness shows
@@ -950,7 +950,14 @@ class ImproveScreen(Screen):
         if prop.recommend.startswith("PROMOTE"):
             gate += "[$muted-2]Press [$dad]p[/] to promote, or esc to walk away.[/]"
         else:
+            from .core import improve
+            improve.record_gate_outcome(self.dad.ctx.memory, target.skill, prop.recommend)
+            streak = improve.held_streak(self.dad.ctx.memory, target.skill)
             gate += "[$muted-2]Not recommended. The proposal is logged either way.[/]"
+            if streak >= 3:
+                gate += (f"\n[$problem]{target.skill} has gone {streak} gate passes "
+                         f"without a promotion.[/] [$muted-2]Re-running probably "
+                         f"won't fix this — worth reading the turns by hand.[/]")
         self._mount(_S(gate, classes="rsi-gate"))
         self._loop_running = False
 
@@ -969,6 +976,9 @@ class ImproveScreen(Screen):
         icon = "[$done]✓[/]" if ok else "[$problem]✗[/]"
         self._mount(_S(f"{icon} [$ink-text]{msg}[/]", classes="rsi-gate"))
         if ok:
+            from .core import improve
+            improve.record_gate_outcome(
+                self.dad.ctx.memory, self._proposal.skill, self._proposal.recommend)
             self._proposal = None
 
 
@@ -1407,9 +1417,9 @@ class DadApp(App):
                 if ms is not None:
                     self.call_from_thread(self._finish_step, call_id, ms, titles)
             elif kind == "controller":
-                # (name, action, reason[, args]) — args ride along on tool
-                # holds so the modal can show the actual proposed call; the
-                # reply-trim case has none.
+                # (name, action, reason[, args]) — a real policy hit on a tool
+                # call. Voice trims do NOT come through here: they're editing,
+                # not governance, so this card stays rare and meaningful.
                 name, action, reason = payload[0], payload[1], payload[2]
                 args = payload[3] if len(payload) > 3 else {}
                 target = "your reply" if name == "reply" else name

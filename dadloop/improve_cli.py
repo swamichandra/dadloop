@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-20
+Last Modified: 2026-08-15
 Purpose: `dadloop --improve` — run the RSI loop deliberately, with the walls in plain sight.
 
 `dadloop --improve` — the recursive self-improvement loop, run by hand.
@@ -136,7 +136,14 @@ def run_improve(agent: AgentLoop | None = None, *, auto_confirm: bool = False) -
     print(f"Recommendation: {prop.recommend}")
 
     if prop.recommend.startswith("REJECT") or prop.recommend.startswith("HOLD"):
+        improve.record_gate_outcome(agent.ctx.memory, target.skill, prop.recommend)
+        streak = improve.held_streak(agent.ctx.memory, target.skill)
         print("Not promoting. The proposal and its replay are logged either way.")
+        if streak >= 3:
+            print(f"\n{target.skill} has now gone {streak} gate passes without a "
+                  f"promotion. Re-running is unlikely to change that on its own —")
+            print("worth reading the actual turns by hand instead of trusting "
+                  "another rewrite to find it.")
         return 0
 
     if auto_confirm:
@@ -150,8 +157,11 @@ def run_improve(agent: AgentLoop | None = None, *, auto_confirm: bool = False) -
 
     if not approved:
         print("Held. Nothing changed — the rewrite is on record, not applied.")
+        improve.record_gate_outcome(agent.ctx.memory, target.skill, "HOLD — declined")
         return 0
 
     ok, msg = il.promote(agent, prop)
+    if ok:
+        improve.record_gate_outcome(agent.ctx.memory, target.skill, prop.recommend)
     print(f"\n{'✓' if ok else '✗'} {msg}")
     return 0 if ok else 1

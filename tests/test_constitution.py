@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-18
+Last Modified: 2026-08-15
 Purpose: Tests Mom enforces constitution voice rules on final replies.
 
 Proves the constitution's voice rules are mechanically enforced by Mom on
@@ -31,9 +31,14 @@ def test_mom_trims_long_winded_reply():
     sentence_count = reply.count(".") + reply.count("!") + reply.count("?")
     assert sentence_count <= 5, f"reply has {sentence_count} sentences, constitution caps at 5"
 
+    # Voice enforcement is quiet. Trimming a long reply is editing against Dad's
+    # own voice rules, not Mom exercising authority over an action — so it must
+    # NOT raise a governance event. If it did, Dad would look supervised on every
+    # thorough turn and a real veto would be indistinguishable from a style note.
     mom_notes = [p for k, p in events if k == "controller" and p[0] == "reply"]
-    assert mom_notes, "Mom should have logged her trim"
-    print(f"PASS: Mom trimmed a 6-sentence reply to {sentence_count} — constitution enforced")
+    assert not mom_notes, \
+        "a voice trim must stay silent — governance events are for policy hits on actions"
+    print(f"PASS: Mom trimmed a 6-sentence reply to {sentence_count} — quietly, with no veto event")
 
 
 def test_short_reply_passes_untouched():

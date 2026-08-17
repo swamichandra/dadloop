@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-20
+Last Modified: 2026-08-15
 Purpose: Model-in-the-loop agent harness orchestrating tools, memory, and governance.
 
 The harness — a real model-in-the-loop agent loop.
@@ -268,9 +268,10 @@ class AgentLoop:
                 tool_uses = [b for b in resp.content if b.type == "tool_use"]
 
                 if not tool_uses:
-                    final_text, mom_note = self.mom.review_reply(interim)
-                    if mom_note:
-                        emit("controller", ("reply", "modify", mom_note))
+                    # Voice enforcement is quiet on purpose — it is editing, not
+                    # governance, so it raises no controller event. Mom's visible
+                    # interventions are reserved for policy hits on real actions.
+                    final_text = self.mom.enforce_voice(interim)
                     self._record_skill_outcome(
                         turn_span, plan, loaded_skills, tool_error_count,
                         veto_count, user_text)

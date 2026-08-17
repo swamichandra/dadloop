@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-07-20
+Last Modified: 2026-08-15
 Purpose: Tests harness-level RSI — grounded scoring, enforced walls, replay, and the human gate.
 
 Recursive self-improvement is the one feature here where a passing-but-wrong
@@ -212,6 +212,34 @@ def test_pick_target_waits_for_evidence():
     print("PASS: the loop waits for evidence and proposes nothing on thin data")
 
 
+def test_held_streak_counts_and_resets_on_promote():
+    """A skill that keeps landing on HOLD builds a visible streak — the same
+    'same command, no change, stop' signal a person would otherwise only catch
+    by remembering. A PROMOTE resets it, since something actually changed."""
+    mem = SemanticMemory(Path(tempfile.mkdtemp()) / "m")
+
+    assert improve.held_streak(mem, "grilling") == 0, \
+        "a skill with no gate history has no streak"
+
+    improve.record_gate_outcome(mem, "grilling", "HOLD — replay could not tell the difference")
+    assert improve.held_streak(mem, "grilling") == 1
+
+    improve.record_gate_outcome(mem, "grilling", "HOLD — replay could not tell the difference")
+    improve.record_gate_outcome(mem, "grilling", "REJECT — regresses on replayed cases")
+    assert improve.held_streak(mem, "grilling") == 3, \
+        "HOLD and REJECT both count toward the stuck streak"
+
+    improve.record_gate_outcome(mem, "grilling", "PROMOTE — beats the incumbent on replayed cases")
+    assert improve.held_streak(mem, "grilling") == 0, \
+        "a promotion resets the streak — something about the skill actually changed"
+
+    improve.record_gate_outcome(mem, "bedtime", "HOLD — replay could not tell the difference")
+    assert improve.held_streak(mem, "grilling") == 0, \
+        "one skill's gate history must not leak into another's streak"
+    assert improve.held_streak(mem, "bedtime") == 1
+    print("PASS: held_streak counts consecutive non-promotions and resets per-skill on PROMOTE")
+
+
 if __name__ == "__main__":
     test_score_is_grounded_and_refuses_immature_skills()
     test_walls_block_everything_but_skill_files()
@@ -219,3 +247,4 @@ if __name__ == "__main__":
     test_replay_is_honest_when_it_cannot_tell()
     test_promotion_is_gated_and_walled()
     test_pick_target_waits_for_evidence()
+    test_held_streak_counts_and_resets_on_promote()
