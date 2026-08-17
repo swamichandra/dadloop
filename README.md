@@ -36,7 +36,7 @@ python -m dadloop.demos   # five scripted scenarios
 Ask him something that has to be worked out, not just answered:
 
 ```
-Twelve people Saturday, and I've got forty bucks.
+I want to take my family of 4 to Spiderman this Tuesday. Dinner after. I have $100 to spend.
 ```
 
 He states a plan, then loads `hosting`, which pulls in `money-decisions`, `grilling`, and `yard-work`. The menu he'd default to costs more than the budget allows. Mom caps the spend before the call runs. Something has to give, and the priority order in the skill decides what. Budget wins, then timing, then menu.
@@ -44,7 +44,7 @@ He states a plan, then loads `hosting`, which pulls in `money-decisions`, `grill
 Every one of those moves is on screen: the plan checking off, each tool call openable, Mom's veto as a card, the token cost at the bottom. Swap the cookout for a procurement request and none of the machinery changes.
 
 <p align="center">
-<img src="docs/tui-main.png" alt="Work surface" width="40%">
+<img src="docs/dadloop.gif" alt="Work surface and demo" width="40%">
 </p>
 
 ## What it is made of
