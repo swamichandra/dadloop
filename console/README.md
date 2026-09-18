@@ -11,7 +11,7 @@ done across every session.
 ## Run it
 
 ```bash
-pip install fastapi uvicorn
+pip install -e ".[console]"    # fastapi, uvicorn, and the websockets library the live feed needs
 dadloop --console          # or: python -m console.server
 ```
 

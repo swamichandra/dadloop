@@ -97,8 +97,8 @@ def main() -> None:
         try:
             from console.server import main as run_console
         except ImportError:
-            raise SystemExit("Mom's Console needs fastapi and uvicorn:\n"
-                             "    pip install fastapi uvicorn")
+            raise SystemExit("Mom's Console needs fastapi, uvicorn, and websockets:\n"
+                             "    pip install -e '.[console]'")
         raise SystemExit(run_console())
 
     if "--improve" in sys.argv:

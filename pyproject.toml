@@ -21,6 +21,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pyflakes>=3.0"]
+# Mom's Console. uvicorn only speaks WebSocket through websockets or wsproto,
+# and the console's live feed is a WebSocket, so the server alone is not enough.
+console = ["fastapi>=0.110", "uvicorn>=0.27", "websockets>=10.4"]
 
 [project.scripts]
 dadloop = "dadloop.__main__:main"

@@ -1,5 +1,5 @@
 """Author: Swami Chandrasekaran
-Last Modified: 2026-09-06
+Last Modified: 2026-09-18
 Purpose: Model-in-the-loop agent harness orchestrating tools, memory, and governance.
 
 The harness — a real model-in-the-loop agent loop.
@@ -68,6 +68,10 @@ def _journal_fields(kind: str, payload) -> dict:
     return {"payload": payload}
 
 _MAX_STEPS = 8  # safety rail: a dad monologue must eventually end
+
+# What .env.example ships, plus the shapes it has shipped before. A key that is
+# only a prefix was never a key; treat it as unset.
+_PLACEHOLDER_KEYS = {"sk-", "sk-ant-", "sk-ant-..."}
 
 
 def _load_dotenv(path: Path = Path(".env")) -> None:
@@ -273,7 +277,7 @@ class AgentLoop:
         # The .env.example ships a placeholder. Treat it as unset, or a user who
         # copies the file and forgets to edit it gets a raw 401 traceback instead
         # of the "set your key" message.
-        if key and not key.startswith("sk-ant-...") and key != "sk-":
+        if key and key not in _PLACEHOLDER_KEYS:
             try:
                 import anthropic
                 self._client = anthropic.Anthropic()
