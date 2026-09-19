@@ -53,6 +53,15 @@ from .core import tools as toolkit
 from .core import skills as skill_lib
 
 
+def _spend(t) -> str:
+    """Dollars for the priced calls, flagged when some calls had no known rate,
+    so a session on an unlisted model never shows a confident wrong total."""
+    text = f"${t.cost:.4f}"
+    if getattr(t, "unpriced_calls", 0):
+        text += f" (+{t.unpriced_calls} unpriced)"
+    return text
+
+
 class _S(Static):
     """A Static that resolves our theme tokens in its content.
 
@@ -321,7 +330,7 @@ class RailStats(_S):
             f"{self._row('llm calls', str(t.llm_calls))}\n"
             f"{self._row('tools run', str(t.tool_calls))}\n"
             f"{self._row('tokens', f'{t.tokens_in}↑ {t.tokens_out}↓')}\n"
-            f"{self._row('spend', f'${t.cost:.4f}', '$dad')}\n"
+            f"{self._row('spend', _spend(t), '$dad')}\n"
             f"{self._row('avg / turn', f'{t.avg_turn_ms:.0f}ms')}\n\n"
             + self._house()
             + self._accomplishments(led)
@@ -779,7 +788,7 @@ class AdminScreen(Screen):
             f"{row('llm calls', t.llm_calls)}\n"
             f"{row('tool calls', t.tool_calls)}\n"
             f"{row('tokens', f'{t.tokens_in}→{t.tokens_out}')}\n"
-            f"{row('cost', f'~${t.cost:.4f}', '$dad')}\n"
+            f"{row('cost', '~' + _spend(t), '$dad')}\n"
             f"{row('avg/turn', f'{t.avg_turn_ms:.0f}ms')}"
         )
 
